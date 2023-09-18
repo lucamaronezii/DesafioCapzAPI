@@ -1,42 +1,98 @@
 ﻿using DesafioCAPZ.Models;
 using Microsoft.AspNetCore.Mvc;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
 
-namespace DesafioCAPZ.Controllers;
-
-[ApiController]
-[Route("[controller]")]
-public class SistemaController : ControllerBase
+namespace DesafioCAPZ.Controllers
 {
-
-    private static List<Dado> dados = new List<Dado>();
-    private static int id = 0;
-
-    [HttpPost]
-    public IActionResult AdicionaDado([FromBody] Dado dado)
+    [ApiController]
+    [Route("[controller]")]
+    public class SistemaController : ControllerBase
     {
-        dado.Id = id++;
-        dados.Add(dado);
-        return CreatedAtAction(nameof(RecuperaDadoPorID), 
-            new {id = dado.Id}, dado);
-    } 
+        private static List<object> allData = null;
+        private static object lockObject = new object();
 
-    [HttpGet]
-    public IEnumerable<Dado> RecuperaDados([FromQuery] int skip = 0, [FromQuery] int take = 50)
-    {
-        return dados.Skip(skip).Take(take);
-    }
+        public SistemaController()
+        {
+            InicializarDados();
+        }
 
-    //[HttpGet("{id}")]
-    //public Dado? RecuperaDadoPorID(string id) 
-    //{
-    //    return dados.FirstOrDefault(dado => dado.MaterialID == id);
-    //}
+        private void InicializarDados()
+        {
+            if (allData == null)
+            {
+                lock (lockObject)
+                {
+                    if (allData == null)
+                    {
+                        allData = new List<object>();
 
-    [HttpGet("{id}")]
-    public IActionResult RecuperaDadoPorID(int id)
-    {
-        var dado = dados.FirstOrDefault(dado => dado.Id == id);
-        if (dado == null) return NotFound();
-        return Ok(dado);
+                        string materialsJsonFilePath = "C:/Users/steye/source/repos/DesafioCAPZ/DesafioCAPZ/data/materials.json";
+                        string workforceJsonFilePath = "C:/Users/steye/source/repos/DesafioCAPZ/DesafioCAPZ/data/workforce.json";
+                        string salesOrdersJsonFilePath = "C:/Users/steye/source/repos/DesafioCAPZ/DesafioCAPZ/data/sales_orders.json";
+                        string purchaseOrdersJsonFilePath = "C:/Users/steye/source/repos/DesafioCAPZ/DesafioCAPZ/data/purchase_orders.json";
+                        string equipmentsJsonFilePath = "C:/Users/steye/source/repos/DesafioCAPZ/DesafioCAPZ/data/equipments.json";
+
+                        allData.AddRange(CarregarJson<Materials>(materialsJsonFilePath));
+                        allData.AddRange(CarregarJson<Workforce>(workforceJsonFilePath));
+                        allData.AddRange(CarregarJson<Sales_orders>(salesOrdersJsonFilePath));
+                        allData.AddRange(CarregarJson<Purchase_orders>(purchaseOrdersJsonFilePath));
+                        allData.AddRange(CarregarJson<Equipment>(equipmentsJsonFilePath));
+                    }
+                }
+            }
+        }
+
+        private List<T> CarregarJson<T>(string filePath)
+        {
+            string jsonContent = System.IO.File.ReadAllText(filePath);
+            return JsonSerializer.Deserialize<List<T>>(jsonContent);
+        }
+
+        [HttpPost]
+        public void AdicionaMaterial([FromBody] Materials material)
+        {
+            allData.Add(material);
+        }
+
+        [HttpGet("pesquisar")]
+        public IActionResult PesquisarPorPalavraChave([FromQuery] string palavraChave)
+        {
+            if (string.IsNullOrWhiteSpace(palavraChave))
+            {
+                return BadRequest("A palavra-chave não pode ser vazia.");
+            }
+
+            List<object> resultados = new List<object>();
+
+            foreach (var data in allData)
+            {
+                foreach (var property in data.GetType().GetProperties())
+                {
+                    var propValue = property.GetValue(data);
+                    if (propValue != null && propValue.ToString().Contains(palavraChave, StringComparison.OrdinalIgnoreCase))
+                    {
+                        resultados.Add(data);
+                        break;
+                    }
+                }
+            }
+
+            if (resultados.Count == 0)
+            {
+                return NotFound("Nenhum resultado encontrado para a palavra-chave fornecida.");
+            }
+
+            return Ok(resultados);
+        }
+
+        [HttpGet]
+        public IActionResult ObterTodosObjetos()
+        {
+            return Ok(allData);
+        }
     }
 }
